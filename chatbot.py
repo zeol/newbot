@@ -55,25 +55,26 @@ def start_config_watcher(config_path, callback):
 # Initialize ChatGPT context per user
 class ChatGPTBot:
     def __init__(self, api_key, admin_prompt, chat_params):
-        openai.api_key = api_key  # Set the OpenAI API key globally
         self.chat_params = chat_params
+        openai.api_key = api_key  # Set the OpenAI API key globally
         self.admin_prompt = {"role": "system", "content": admin_prompt}  # Administrative prompt
         self.user_context = defaultdict(list)
-
-    def respond(self, user, message, chat_params):
+        print(f"SELF::: {self}")
+    def respond(self, user, message):
         # Ensure the administrative prompt is included at the start of every interaction
         context = [self.admin_prompt] + self.user_context[user]
         context.append({"role": "user", "content": message})
+        #print(f"Got chat params {self.chat_params[]}")
 
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=context,
-            temperature =  chat_params["temperature"],
-            max_tokens = chat_params["max_tokens"],
-            top_p = chat_params["top_p"],
-            frequency_penalty = chat_params["frequency_penalty"],
-            presence_penalty = chat_params["presence_penalty"],
-            request_timeout = chat_params["request_timeout"]
+            temperature =  self.chat_params["temperature"],
+            max_tokens = self.chat_params["max_tokens"],
+            top_p = self.chat_params["top_p"],
+            frequency_penalty = self.chat_params["frequency_penalty"],
+            presence_penalty = self.chat_params["presence_penalty"],
+            request_timeout = self.chat_params["request_timeout"]
         )
 
         reply = response.choices[0].message["content"]
@@ -99,6 +100,7 @@ class IRCBot:
         self.channels = config["channels"]
         self.usessl = config["usessl"]
         self.password = config.get("password")
+        self.chat_params = config["chat_params"]
         self.chatgpt_bot = ChatGPTBot(config["openai_api_key"], config["admin_prompt"], config["chat_params"])
         self.irc = None
 
@@ -154,7 +156,7 @@ class IRCBot:
                 for line in lines:
                     print(f"< {line}")
                     if line.startswith("PING"):
-                        self.send_raw(f"PONG {line.split()[1]}")
+                        self.send(f"PONG {line.split()[1]}")
                     if "INVITE" in line:
                         parts = line.split()
                         inviter = parts[0][1:].split("!")[0]  # Extract inviter's nickname
@@ -183,6 +185,7 @@ class IRCBot:
 
         # Ensure the bot only responds to messages directed at it
         if msg_content.startswith(self.nickname):
+            #chat_params = self.chat_params
             prompt = msg_content.split(self.nickname, 1)[1].strip()
             response = self.chatgpt_bot.respond(user, prompt)
 
