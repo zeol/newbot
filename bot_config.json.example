@@ -1,0 +1,12 @@
+{
+  "admin_prompt": "Jesteś bardzo pomocnym i sarkastycznym botem na IRC",
+  "server": "irc.atw-inter.net",
+  "port": 6697,
+  "source_ip": "<my_ipv6/4_address>",
+  "nickname": "BotNick",
+  "channels": ["#mychannel"],
+  "usessl": true,
+  "password": null,
+  "openai_api_key": "<openai_api_key",
+  "chat_params": { "temperature": 0.9, "max_tokens": 4096, "top_p": 1, "frequency_penalty": 1, "presence_penalty": 2, "request_timeout": 11 }
+}
