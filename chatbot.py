@@ -4,6 +4,7 @@ import time
 import json
 import openai
 import threading
+import time
 from collections import defaultdict
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -59,7 +60,6 @@ class ChatGPTBot:
         openai.api_key = api_key  # Set the OpenAI API key globally
         self.admin_prompt = {"role": "system", "content": admin_prompt}  # Administrative prompt
         self.user_context = defaultdict(list)
-        print(f"SELF::: {self}")
     def respond(self, user, message):
         # Ensure the administrative prompt is included at the start of every interaction
         context = [self.admin_prompt] + self.user_context[user]
@@ -91,6 +91,12 @@ class ChatGPTBot:
 
 # IRC Bot class
 class IRCBot:
+    DEBUG = True  # Debug flag
+    
+    def debug_print(self, *args):
+        if self.DEBUG:
+            print("[DEBUG]", *args)
+
     def __init__(self, config):
         self.admin_prompt = config["admin_prompt"]
         self.server = config["server"]
@@ -156,7 +162,9 @@ class IRCBot:
                 for line in lines:
                     print(f"< {line}")
                     if line.startswith("PING"):
-                        self.send(f"PONG {line.split()[1]}")
+                        server = line.split()[1]
+                        print(f"PONG {server}")
+                        self.send(f"PONG {server}")
                     if "INVITE" in line:
                         parts = line.split()
                         inviter = parts[0][1:].split("!")[0]  # Extract inviter's nickname
@@ -169,29 +177,63 @@ class IRCBot:
                 print(f"Error receiving message: {e}")
                 #self.connect()
 
+    def split_at_word_boundary(self, text, max_length):
+        """Split text at word boundary, not exceeding max_length"""
+        if len(text) <= max_length:
+            return text
+        
+        # Find the last space before max_length
+        space_index = text[:max_length].rfind(' ')
+        if space_index == -1:
+            return text[:max_length]
+        return text[:space_index]
 
     def handle_message(self, message):
-
         parts = message.split(" ", 3)
         if len(parts) < 4 or not parts[1] == "PRIVMSG":
             return
 
-        user = parts[0].split("!")[0][1:]  # Extract the username from the message
+        user = parts[0].split("!")[0][1:]
         channel = parts[2]
-        msg_content = parts[3][1:]  # Extract the actual message content
+        msg_content = parts[3][1:]
+        
+        self.debug_print(f"Received message from {user} in {channel}: {msg_content}")
 
-        if channel == self.nickname:  # Direct message
+        if channel == self.nickname:
             channel = user
+            self.debug_print(f"Direct message, setting channel to {channel}")
 
-        # Ensure the bot only responds to messages directed at it
         if msg_content.startswith(self.nickname):
-            #chat_params = self.chat_params
-            prompt = msg_content.split(self.nickname, 1)[1].strip()
-            response = self.chatgpt_bot.respond(user, prompt)
+            max_length = 500
+            prompt = msg_content.split(self.nickname, 1)[1].strip().lstrip(":")
+            self.debug_print(f"Extracted prompt: {prompt}")
+            
+            chunks = [prompt[i:i + max_length] for i in range(0, len(prompt), max_length)]
+            self.debug_print(f"Split into {len(chunks)} chunks: {chunks}")
+            
+            responses = [self.chatgpt_bot.respond(user, chunk) for chunk in chunks]
+            response = ' '.join(responses).replace('\n', ' ').strip()
+            self.debug_print(f"Combined response (no newlines): {response}")
 
-            # Address the user by their nickname in the reply
-            self.send(f"PRIVMSG {channel} :{user}: {response}")
+            # Split response into chunks at word boundaries
+            irc_chunks = []
+            remaining = response
+            while remaining:
+                chunk = self.split_at_word_boundary(remaining, 400)
+                irc_chunks.append(chunk)
+                remaining = remaining[len(chunk):].strip()
+            
+            self.debug_print(f"Split into {len(irc_chunks)} IRC chunks")
 
+            for i, chunk in enumerate(irc_chunks):
+                try:
+                    message = f"PRIVMSG {channel} :{user}: {chunk}" if i == 0 else f"PRIVMSG {channel} :{chunk}"
+                    self.send(message)
+                    self.debug_print(f"Sent chunk {i+1}/{len(irc_chunks)}: {message}")
+                    time.sleep(0.5)
+                except Exception as e:
+                    self.debug_print(f"Error sending message chunk {i+1}: {e}")
+                    break
 
     def run(self):
         self.connect()
